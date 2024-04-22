@@ -1,0 +1,12 @@
+# dataset
+drugbank_test/drugbank/
+drugbank_test/inductive_data/
+twosides_test/twosides/
+
+# backup & saved model
+*.pkl*
+*.out
+
+# Python cache
+__pycache__/
+*.pyc
