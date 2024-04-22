@@ -18,9 +18,9 @@ Please ensure the working path is `.*/HDN-DDI/` and download the zip file from [
 
 Then, run the code in terminal:
 ```
-unzip DSN-DDI-dataset.zip
+unzip Data-for-HDN-DDI.zip
 mv drugbank/ drugbank_test/
 mv inductive_data/ drugbank_test/
 mv twosides/ twosides_test/
-rm DSN-DDI-dataset.zip
+rm Data-for-HDN-DDI.zip
 ```
