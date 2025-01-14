@@ -4,6 +4,8 @@
 
 **Article Link**: None (the url will be given after the paper is accepted.)
 
+Note that: The relevant figures will be published in this repository after the paper is published. Please wait patiently.
+
 # Requirement
 To run the code, you need the following dependencies:
 ```
@@ -46,7 +48,7 @@ If you have configured the environment and want to verify it yourself:
 
 2. Run the script to complete multiple experiments (Note: You can modify the script's `comment` variable to customize the comments for each experiment):
 ```
-sh repeat.sh
+./repeat.sh
 ```
 
 3. Calculate the average performance of the model through `evaluate.ipynb`
