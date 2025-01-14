@@ -9,6 +9,7 @@ import pandas as pd
 import numpy as np
 from sklearn.model_selection import StratifiedShuffleSplit
 import models
+import custom_loss
 from data_preprocessing import DrugDataset, DrugDataLoader
 import warnings
 warnings.filterwarnings('ignore',category=UserWarning)
@@ -18,17 +19,18 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--n_atom_feats', type=int, default=55, help='num of input features')
 parser.add_argument('--n_atom_hid', type=int, default=128, help='num of hidden features')
 parser.add_argument('--rel_total', type=int, default=86, help='num of interaction types')
-parser.add_argument('--lr', type=float, default=0.01, help='learning rate')
+parser.add_argument('--lr', type=float, default=1e-3, help='learning rate')
 parser.add_argument('--n_epochs', type=int, default=200, help='num of epochs')
 parser.add_argument('--kge_dim', type=int, default=128, help='dimension of interaction matrix')
 parser.add_argument('--batch_size', type=int, default=1024, help='batch size')
-
 
 parser.add_argument('--weight_decay', type=float, default=5e-4)
 parser.add_argument('--neg_samples', type=int, default=1)
 parser.add_argument('--data_size_ratio', type=int, default=1)
 parser.add_argument('--use_cuda', type=bool, default=True, choices=[0, 1])
-parser.add_argument('--pkl_name', type=str, default='drugbank_test/transductive_drugbank.pkl')
+parser.add_argument('--device', type=int, default=0, choices=[0, 1, 2])
+parser.add_argument('--fold', type=int, default=0, choices=[0, 1, 2])
+parser.add_argument('--pkl_name', type=str, default=f'./pkl/db-{time.strftime("%m%d_%H%M")}.pkl')
 
 args = parser.parse_args()
 n_atom_feats = args.n_atom_feats
@@ -38,19 +40,21 @@ lr = args.lr
 n_epochs = args.n_epochs
 kge_dim = args.kge_dim
 batch_size = args.batch_size
-pkl_name = args.pkl_name
+pkl_name = args.pkl_name.replace('.pkl', f'-fold{args.fold}.pkl')
 
 weight_decay = args.weight_decay
 neg_samples = args.neg_samples
 data_size_ratio = args.data_size_ratio
-device = 'cuda:0' if torch.cuda.is_available() and args.use_cuda else 'cpu'
+torch.cuda.set_device(args.device)
+device = f'cuda' if torch.cuda.is_available() else 'cpu'
 print(args)
 ############################################################
+
 ###### Dataset
-def split_train_valid(data, fold, val_ratio=0.2):
+def split_train_valid(data, seed, val_ratio=0.2):
     data = np.array(data)
-    cv_split = StratifiedShuffleSplit(n_splits=2, test_size=val_ratio, random_state=fold)
-    train_index, val_index = next(iter(cv_split.split(X=data, y=data[:, 2])))
+    cv_split = StratifiedShuffleSplit(n_splits=1, test_size=val_ratio, random_state=seed)
+    train_index, val_index = list(cv_split.split(X=data, y=data[:, 2]))[0]
     train_tup = data[train_index]
     val_tup = data[val_index]
     train_tup = [(tup[0],tup[1],int(tup[2]))for tup in train_tup ]
@@ -58,8 +62,8 @@ def split_train_valid(data, fold, val_ratio=0.2):
 
     return train_tup, val_tup
 
-df_ddi_train = pd.read_csv('drugbank_test/DrugBank/warm_start/fold0/train.csv')
-df_ddi_test = pd.read_csv('drugbank_test/DrugBank/warm_start/fold0/test.csv')
+df_ddi_train = pd.read_csv(f'drugbank_test/DrugBank/warm_start/fold{args.fold}/train.csv')
+df_ddi_test = pd.read_csv(f'drugbank_test/DrugBank/warm_start/fold{args.fold}/test.csv')
 
 train_tup = [(h, t, r) for h, t, r in zip(df_ddi_train['d1'], df_ddi_train['d2'], df_ddi_train['type'])]
 train_tup, val_tup = split_train_valid(train_tup,2, val_ratio=0.2)
@@ -114,6 +118,71 @@ def do_compute_metrics(probas_pred, target):
 
     return acc, auroc, f1_score, precision, recall, int_ap, ap
 
+
+def train(model, train_data_loader, val_data_loader, loss_fn,  optimizer, n_epochs, device, scheduler=None):
+    best_mean_metrics, best_epoch = 0, 0
+    print('Starting training at', datetime.today())
+    for i in range(1, n_epochs+1):
+        start = time.time()
+        train_loss = 0
+        val_loss = 0
+        train_probas_pred = []
+        train_ground_truth = []
+        val_probas_pred = []
+        val_ground_truth = []
+       
+        for batch in train_data_loader:
+         
+            model.train()
+            p_score, n_score, probas_pred, ground_truth = do_compute(batch, device, model)
+            train_probas_pred.append(probas_pred)
+            train_ground_truth.append(ground_truth)
+            loss, loss_p, loss_n = loss_fn(p_score, n_score)
+        
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+           
+            train_loss += loss.item() * len(p_score)
+        train_loss /= len(train_data)
+
+        with torch.no_grad():
+            train_probas_pred = np.concatenate(train_probas_pred)
+            train_ground_truth = np.concatenate(train_ground_truth)
+
+            train_acc, train_auc_roc, train_f1, train_precision,train_recall,train_int_ap, train_ap = do_compute_metrics(train_probas_pred, train_ground_truth)
+
+            for batch in val_data_loader:
+                model.eval()
+                p_score, n_score, probas_pred, ground_truth = do_compute(batch, device, model)
+                val_probas_pred.append(probas_pred)
+                val_ground_truth.append(ground_truth)
+                loss, loss_p, loss_n = loss_fn(p_score, n_score)
+                val_loss += loss.item() * len(p_score)            
+
+            val_loss /= len(val_data)
+            val_probas_pred = np.concatenate(val_probas_pred)
+            val_ground_truth = np.concatenate(val_ground_truth)
+            val_acc, val_auc_roc, val_f1, val_precision,val_recall,val_int_ap, val_ap = do_compute_metrics(val_probas_pred, val_ground_truth)
+            mean_metrics = np.average([val_acc, val_auc_roc, val_f1])
+            if mean_metrics>best_mean_metrics:
+                best_mean_metrics, best_epoch = mean_metrics, i
+                torch.save(model,pkl_name)
+
+        if scheduler:
+            # print('scheduling')
+            scheduler.step()
+
+
+        flag = '*' if best_epoch==i else ' '
+        print(f'Epoch: {i}{flag} ({time.time() - start:.4f}s), train_loss: {train_loss:.4f}, val_loss: {val_loss:.4f}')
+        print(f'\t\ttrain_acc: {train_acc:.4f}, train_roc: {train_auc_roc:.4f},train_aupr: {train_ap:.4f},train_f1:{train_f1:.4f}')
+        print(f'\t\tval_acc: {val_acc:.4f}, val_roc: {val_auc_roc:.4f}, val_aupr:{val_ap:.4f}, val_f1:{val_f1:.4f}')
+
+        if i-best_epoch>=40:
+            print(f'Early Stopping at training epoch: {i}, best epoch: {best_epoch}')
+            break
+
 def test(test_data_loader,model):
     test_probas_pred = []
     test_ground_truth = []
@@ -128,15 +197,16 @@ def test(test_data_loader,model):
         test_acc, test_auc_roc, test_f1, test_precision,test_recall,test_int_ap, test_ap = do_compute_metrics(test_probas_pred, test_ground_truth)
     print('\n')
     print('============================== Test Result ==============================')
-    print(f'\t\ttest_acc: {test_acc:.4f}, test_auc_roc: {test_auc_roc:.4f},test_f1: {test_f1:.4f},test_precision:{test_precision:.4f}')
-    print(f'\t\ttest_recall: {test_recall:.4f}, test_int_ap: {test_int_ap:.4f},test_ap: {test_ap:.4f}')
+    print(f'\t\ttest_acc: {test_acc:.4f}, test_roc: {test_auc_roc:.4f}, test_f1: {test_f1:.4f}, test_precision: {test_precision:.4f},test_recall: {test_recall:.4f},test_int_ap: {test_int_ap:.4f},test_ap: {test_ap:.4f}')
 
-
-model = models.HDN_DDI(n_atom_feats, n_atom_hid, kge_dim, rel_total, heads_out_feat_params=[64,64,64,64], blocks_params=[2, 2, 2, 2])
+model = models.HDN_DDI(n_atom_feats, n_atom_hid, kge_dim, rel_total, heads_out_feat_params=[64,64,64,64,64,64], blocks_params=[2, 2, 2, 2, 2, 2])
+loss = custom_loss.SigmoidLoss()
+optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+scheduler = optim.lr_scheduler.LambdaLR(optimizer, lambda epoch: 0.96 ** (epoch))
 # print(model)
+model.to(device=device)
 # # if __name__ == '__main__':
+train(model, train_data_loader, val_data_loader, loss, optimizer, n_epochs, device, scheduler)
 test_model = torch.load(pkl_name)
-test_model.to(device=device)
 test(test_data_loader,test_model)
-
 

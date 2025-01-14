@@ -1,18 +1,18 @@
 #!/bin/bash
 
 # Shell脚本：重复循环，每次循环保持等待，日志文件中包含"Best Result"时开始下次循环
-for ((k=2; k<=3; k++)); do
-    for ((i=0; i<=4; i++)); do
+for ((k=1; k<=1; k++)); do
+    for ((i=0; i<=2; i++)); do
         echo "$i-th running"
 
         f=$i # fold
-        comment="HDNDDI_fold$f"
-        time=$(date +%m%d_%H%M)
+        comment="HDNDDI_cold_fold$f"
+        time=$(date +%Y%m%d_%H%M)
         log_name=$time\_$comment.log
-        log_path=log/new_pkl/$log_name
+        log_path=log/$log_name
         nohup python drugbank_test/inductive_train.py \
             --fold $f \
-            --batch_size 1024 \
+            --batch_size 512 \
             --n_atom_feats 66 \
             --device 0 \
             > $log_path & \

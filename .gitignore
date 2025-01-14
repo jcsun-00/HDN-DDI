@@ -1,12 +1,13 @@
 # dataset
-drugbank_test/drugbank/
-drugbank_test/inductive_data/
-twosides_test/twosides/
+drugbank_test/DrugBank/
+twosides_test/Twosides/
 
 # backup & saved model
-*.pkl*
+*.log
+*.pkl
 *.out
 
 # Python cache
 __pycache__/
+.vscode*
 *.pyc

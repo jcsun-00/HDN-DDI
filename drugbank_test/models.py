@@ -140,17 +140,18 @@ class HDN_DDI_Block(nn.Module):
 
         h_data.x, h_weight = self.pool(h_data.x, h_data.edge_index, return_attention_weights=True)
         t_data.x, t_weight = self.pool(t_data.x, t_data.edge_index, return_attention_weights=True)
-        # # Molecular-level Node
-        # h_global_graph_emb = get_node(h_data.x, h_data.batch, h_data.y, 2)[0]
-        # t_global_graph_emb = get_node(t_data.x, t_data.batch, t_data.y, 2)[0]
+        # Molecular-level Node
+        h_global_graph_emb = get_node(h_data.x, h_data.batch, h_data.y, 2)[0]
+        t_global_graph_emb = get_node(t_data.x, t_data.batch, t_data.y, 2)[0]
 
         # # SAGPool
         # h_att_x, att_edge_index, att_edge_attr, h_att_batch, att_perm, h_att_scores= self.readout(h_data.x, h_data.edge_index, batch=h_data.batch)
         # t_att_x, att_edge_index, att_edge_attr, t_att_batch, att_perm, t_att_scores= self.readout(t_data.x, t_data.edge_index, batch=t_data.batch)
         # h_global_graph_emb = global_add_pool(h_att_x, h_att_batch)
         # t_global_graph_emb = global_add_pool(t_att_x, t_att_batch)
+
         # # Sum Pooling
-        h_global_graph_emb = global_add_pool(h_data.x, h_data.batch)
-        t_global_graph_emb = global_add_pool(t_data.x, t_data.batch)        
+        # h_global_graph_emb = global_add_pool(h_data.x, h_data.batch)
+        # t_global_graph_emb = global_add_pool(t_data.x, t_data.batch)        
 
         return h_data, t_data, h_global_graph_emb, t_global_graph_emb, h_weight, t_weight

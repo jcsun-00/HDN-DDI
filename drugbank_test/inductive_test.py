@@ -33,7 +33,7 @@ seed_everything(42)
 ######################### Parameters ######################
 parser = argparse.ArgumentParser()
 parser.add_argument('--device', type=int, default=0, choices=[0, 1, 2])
-parser.add_argument('--fold', type=int, required=True, choices=[0, 1, 2, 3, 4, 2015])
+parser.add_argument('--fold', type=int, required=True, choices=[0, 1, 2, 2015])
 parser.add_argument('--pkl_name', type=str, required=True)
 parser.add_argument('--batch_size', type=int, default=1024, help='batch size')
 
@@ -46,8 +46,8 @@ print(args)
 
 ###### Dataset
 
-df_ddi_s1 = pd.read_csv(f'drugbank_test/inductive_data/fold{args.fold}/s1.csv')
-df_ddi_s2 = pd.read_csv(f'drugbank_test/inductive_data/fold{args.fold}/s2.csv')
+df_ddi_s1 = pd.read_csv(f'drugbank_test/DrugBank/cold_start/fold{args.fold}/s1.csv')
+df_ddi_s2 = pd.read_csv(f'drugbank_test/DrugBank/cold_start/fold{args.fold}/s2.csv')
 
 
 
